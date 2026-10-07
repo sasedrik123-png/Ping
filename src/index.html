@@ -1,252 +1,182 @@
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Ping</title>
-<style>
-html,body{margin:0;height:100%;overflow:hidden;background:#050505}
-canvas{display:block}
-</style>
-</head>
-<body>
-<canvas id="c"></canvas>
+<canvas id=c style=position:fixed;inset:0></canvas><script>
+const g=c.getContext("2d"),M=Math,N=Date.now
+let w,h,px=0,pz=2,a=0,k={},tx,tz,pt=-1e4,pings=0,audio,found=0,fc=0,tp=0,fp=0
 
-<script>
-const c=document.querySelector("canvas")
-const g=c.getContext("2d")
-
-let w,h
-let px=0,pz=2,a=0
-let keys={}
-let tx,tz
-let pingTime=-9999
-let pings=0
-let audio
-let found=0
-let foundCount=0
-let targetPings=0
-let foundPings=0
-
-function size(){
+onresize=()=>{
   c.width=w=innerWidth
   c.height=h=innerHeight
 }
-onresize=size
-size()
+onresize()
 
 function target(){
-  tx=(Math.random()-.5)*10
-  tz=-4+Math.random()*20
+  tx=(M.random()-.5)*10
+  tz=M.random()*20-4
 }
 target()
 
-function camera(X,Y,Z){
-  let dx=X-px
-  let dz=Z-pz
-  let cs=Math.cos(a)
-  let sn=Math.sin(a)
-
-  return [
-    dx*cs-dz*sn,
-    Y,
-    dx*sn+dz*cs
-  ]
+function cam(X,Y,Z){
+  let x=X-px,z=Z-pz,C=M.cos(a),S=M.sin(a)
+  return[x*C-z*S,Y,x*S+z*C]
 }
 
-function screen(p){
-  let f=Math.min(w,h)*.8
-  return [
-    w/2+p[0]/p[2]*f,
-    h/2+p[1]/p[2]*f
-  ]
+function scr(p){
+  let f=M.min(w,h)*.8
+  return[w/2+p[0]/p[2]*f,h/2+p[1]/p[2]*f]
 }
 
 function project(X,Y,Z){
-  let p=camera(X,Y,Z)
-  if(p[2]<.1)return
-  return screen(p)
+  let p=cam(X,Y,Z)
+  return p[2]>.1&&scr(p)
 }
 
-function line(x1,y1,z1,x2,y2,z2){
-  let A=camera(x1,y1,z1)
-  let B=camera(x2,y2,z2)
+function line(x,y,z,X,Y,Z){
+  let A=cam(x,y,z),B=cam(X,Y,Z),n=.1,t
 
-  let near=.1
+  if(A[2]<n&&B[2]<n)return
 
-  if(A[2]<near&&B[2]<near)return
-
-  if(A[2]<near){
-    let t=(near-A[2])/(B[2]-A[2])
-    A=[
-      A[0]+(B[0]-A[0])*t,
-      A[1]+(B[1]-A[1])*t,
-      near
-    ]
+  if(A[2]<n){
+    t=(n-A[2])/(B[2]-A[2])
+    A[0]+=(B[0]-A[0])*t
+    A[1]+=(B[1]-A[1])*t
+    A[2]=n
   }
 
-  if(B[2]<near){
-    let t=(near-B[2])/(A[2]-B[2])
-    B=[
-      B[0]+(A[0]-B[0])*t,
-      B[1]+(A[1]-B[1])*t,
-      near
-    ]
+  if(B[2]<n){
+    t=(n-B[2])/(A[2]-B[2])
+    B[0]+=(A[0]-B[0])*t
+    B[1]+=(A[1]-B[1])*t
+    B[2]=n
   }
 
-  A=screen(A)
-  B=screen(B)
+  A=scr(A)
+  B=scr(B)
 
   g.beginPath()
-  g.moveTo(A[0],A[1])
-  g.lineTo(B[0],B[1])
+  g.moveTo(...A)
+  g.lineTo(...B)
   g.stroke()
 }
 
 onkeydown=e=>{
-  keys[e.key.toLowerCase()]=1
-
-  if(e.code=="Space"&&!e.repeat){
-    e.preventDefault()
-    ping()
-  }
+  k[e.key.toLowerCase()]=1
+  e.code=="Space"&&!e.repeat&&(e.preventDefault(),ping())
 }
 
-onkeyup=e=>keys[e.key.toLowerCase()]=0
+onkeyup=e=>k[e.key.toLowerCase()]=0
 
 c.onclick=()=>c.requestPointerLock()
 
-onmousemove=e=>{
-  if(document.pointerLockElement===c)
-    a+=e.movementX*.002
+onmousemove=e=>
+  document.pointerLockElement==c&&(a+=e.movementX*.002)
+
+function sound(f,t=.2,v=.14){
+  audio||=new AudioContext
+
+  let o=audio.createOscillator()
+  let q=audio.createGain()
+  let n=audio.currentTime
+
+  f=[].concat(f)
+
+  for(let i in f)
+    o.frequency.setValueAtTime(f[i],n+i*.12)
+
+  q.gain.setValueAtTime(v,n)
+  q.gain.exponentialRampToValueAtTime(.001,n+t)
+
+  o.connect(q)
+  q.connect(audio.destination)
+
+  o.start()
+  o.stop(n+t)
+}
+
+function dist(){
+  return M.hypot(tx-px,tz-pz)
 }
 
 function ping(){
   pings++
-  targetPings++
-  pingTime=performance.now()
+  tp++
+  pt=N()
 
-  let d=Math.hypot(tx-px,tz-pz)
-
-  audio||=new AudioContext()
-
-  let o=audio.createOscillator()
-  let v=audio.createGain()
-
-  o.frequency.value=Math.max(180,950-d*45)
-
-  v.gain.setValueAtTime(.14,audio.currentTime)
-  v.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.2)
-
-  o.connect(v)
-  v.connect(audio.destination)
-
-  o.start()
-  o.stop(audio.currentTime+.2)
+  sound(M.max(180,950-dist()*45))
 }
 
 function move(){
   let s=.045
+  let f=(k.w|k.arrowup)-(k.s|k.arrowdown)
+  let r=(k.d|k.arrowright)-(k.a|k.arrowleft)
 
-  let f=(keys.w||keys.arrowup||0)-(keys.s||keys.arrowdown||0)
-  let r=(keys.d||keys.arrowright||0)-(keys.a||keys.arrowleft||0)
+  px+=M.sin(a)*f*s+M.cos(a)*r*s
+  pz+=M.cos(a)*f*s-M.sin(a)*r*s
 
-  px+=Math.sin(a)*f*s+Math.cos(a)*r*s
-  pz+=Math.cos(a)*f*s-Math.sin(a)*r*s
-
-  px=Math.max(-5.6,Math.min(5.6,px))
-  pz=Math.max(-5.6,Math.min(17.6,pz))
+  px=M.max(-5.6,M.min(5.6,px))
+  pz=M.max(-5.6,M.min(17.6,pz))
 }
 
-function checkTarget(){
-  let now=performance.now()
+function check(){
+  let n=N()
 
   if(found){
-    if(now>found){
+    if(n>found){
       target()
       found=0
     }
     return
   }
 
-  let d=Math.hypot(tx-px,tz-pz)
+  if(dist()<.45){
+    found=n+1200
 
-  if(d<.45){
-    found=now+1200
+    fc++
+    fp+=tp
+    tp=0
 
-    foundCount++
-foundPings+=targetPings
-targetPings=0
-
-    audio||=new AudioContext()
-
-    let o=audio.createOscillator()
-    let v=audio.createGain()
-
-    o.frequency.setValueAtTime(650,audio.currentTime)
-    o.frequency.setValueAtTime(1100,audio.currentTime+.12)
-    o.frequency.setValueAtTime(1500,audio.currentTime+.24)
-
-    v.gain.setValueAtTime(.18,audio.currentTime)
-    v.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.4)
-
-    o.connect(v)
-    v.connect(audio.destination)
-
-    o.start()
-    o.stop(audio.currentTime+.4)
+    sound([650,1100,1500],.4,.18)
   }
+}
+
+function text(s,y,x=22){
+  g.fillText(s,x,y)
 }
 
 function draw(){
   move()
-  checkTarget()
+  check()
 
-  g.fillStyle="#050505"
+  g.fillStyle="black"
   g.fillRect(0,0,w,h)
 
-  // floor grid
   g.strokeStyle="#173017"
-  g.lineWidth=1
 
-  for(let x=-6;x<=6;x++)
-    line(x,3,-6,x,3,18)
+  for(let i=-6;i<19;i++){
+    i<7&&line(i,3,-6,i,3,18)
+    line(-6,3,i,6,3,i)
+  }
 
-  for(let z=-6;z<=18;z++)
-    line(-6,3,z,6,3,z)
-
-  // room
   g.strokeStyle="#386838"
 
-  // floor edges
-  line(-6,3,-6,6,3,-6)
-  line(6,3,-6,6,3,18)
-  line(6,3,18,-6,3,18)
-  line(-6,3,18,-6,3,-6)
+  let R=[-6,-6,6,-6,6,18,-6,18]
 
-  // ceiling edges
-  line(-6,-3,-6,6,-3,-6)
-  line(6,-3,-6,6,-3,18)
-  line(6,-3,18,-6,-3,18)
-  line(-6,-3,18,-6,-3,-6)
+for(let i=0;i<8;i+=2){
+  let x=R[i],z=R[i+1]
+  let X=R[(i+2)%8],Z=R[(i+3)%8]
 
-  // vertical corners
-  line(-6,-3,-6,-6,3,-6)
-  line(6,-3,-6,6,3,-6)
-  line(-6,-3,18,-6,3,18)
-  line(6,-3,18,6,3,18)
+  line(x,-3,z,X,-3,Z)
+  line(x,-3,z,x,3,z)
+}
 
-  let age=performance.now()-pingTime
-  let d=Math.hypot(tx-px,tz-pz)
+  let age=N()-pt
+  let d=dist()
 
-  // old simple sonar
   if(age<600){
     g.strokeStyle=`rgba(140,255,140,${1-age/600})`
     g.beginPath()
-    g.arc(w/2,h/2,age*.55,0,Math.PI*2)
+    g.arc(w/2,h/2,age*.55,0,7)
     g.stroke()
   }
 
-  // signal flash
   if(age<400){
     let t=project(tx,0,tz)
 
@@ -256,7 +186,7 @@ function draw(){
 
       g.strokeStyle="#9f9"
       g.beginPath()
-      g.arc(t[0],t[1],7+age/25,0,Math.PI*2)
+      g.arc(t[0],t[1],7+age/25,0,7)
       g.stroke()
     }
   }
@@ -264,48 +194,44 @@ function draw(){
   g.font="14px monospace"
 
   g.fillStyle="#8f8"
-  g.fillText("PING",22,30)
+  text("PING",30)
 
   g.fillStyle="#666"
-  g.fillText("WASD  mouse  SPACE",22,52)
-  g.fillText("pings "+pings,22,74)
-
-  g.fillText("found "+foundCount,22,96)
-
-let avg=foundCount ? (foundPings/foundCount).toFixed(1) : "-"
-g.fillText("avg "+avg+" pings",22,118)
+  text("WASD  mouse  SPACE",52)
+  text("pings "+pings,74)
+  text("found "+fc,96)
+  text("avg "+(fc?(fp/fc).toFixed(1):"-")+" pings",118)
 
   if(age<500){
     g.fillStyle="#8f8"
 
-    g.fillText(
+    text(
       d<.7?"SIGNAL FOUND":
       d<2?"very close":
       d<5?"closer...":
       "weak signal",
-      22,140
+      140
     )
   }
 
   if(found){
-  let left=found-performance.now()
+    let l=found-N()
 
-  g.fillStyle=`rgba(120,255,120,${left/4000})`
-  g.fillRect(0,0,w,h)
+    g.fillStyle=`rgba(120,255,120,${l/4000})`
+    g.fillRect(0,0,w,h)
 
-  g.textAlign="center"
-  g.font="bold 28px monospace"
-  g.fillStyle="#bfb"
-  g.fillText("SIGNAL FOUND",w/2,h/2-35)
+    g.textAlign="center"
+    g.font="bold 28px monospace"
+    g.fillStyle="#bfb"
+    text("SIGNAL FOUND",h/2-35,w/2)
 
-  g.font="13px monospace"
-  g.fillStyle="#8f8"
-  g.fillText("relocating...",w/2,h/2-12)
+    g.font="13px monospace"
+    g.fillStyle="#8f8"
+    text("relocating",h/2-12,w/2)
 
-  g.textAlign="left"
-}
+    g.textAlign="left"
+  }
 
-  // crosshair
   g.strokeStyle="#888"
   g.beginPath()
   g.moveTo(w/2-5,h/2)
@@ -319,5 +245,3 @@ g.fillText("avg "+avg+" pings",22,118)
 
 draw()
 </script>
-</body>
-</html>
